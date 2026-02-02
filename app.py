@@ -34,7 +34,7 @@ CORS(app)
 
 # Глобальные переменные
 agent = None
-active_tasks = {}
+active_tasks = {}  # Словарь для отслеживания асинхронных задач
 
 def init_agent():
     """Инициализация агента"""
@@ -123,6 +123,45 @@ def get_importance_badge(importance):
         return '<span class="badge bg-warning">⚠️ Средняя</span>'
     else:
         return '<span class="badge bg-secondary">📰 Низкая</span>'
+
+def get_system_stats():
+    """Получение статистики системы (общая функция для всех маршрутов)"""
+    if not agent:
+        # Демо-режим
+        return {
+            "statistics": {
+                "total_news": 0,
+                "analyzed_news": 0, 
+                "total_analyses": 0,
+                "analysis_coverage": "0%",
+                "categories": {
+                    "технологии": 0,
+                    "политика": 0,
+                    "экономика": 0,
+                    "наука": 0,
+                    "спорт": 0
+                }
+            },
+            "database_size_mb": 0,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    try:
+        return agent.get_statistics()
+    except Exception as e:
+        print(f"⚠️  Ошибка получения статистики: {e}")
+        # Возвращаем базовую статистику при ошибке
+        return {
+            "statistics": {
+                "total_news": 0,
+                "analyzed_news": 0,
+                "total_analyses": 0,
+                "analysis_coverage": "0%",
+                "categories": {}
+            },
+            "database_size_mb": 0,
+            "timestamp": datetime.now().isoformat()
+        }
 
 # ============================================================================
 # API МАРШРУТЫ
@@ -355,7 +394,7 @@ def api_search():
 
 @app.route('/api/task/<task_id>')
 def api_task_status(task_id):
-    """API статуса задачи"""
+    """API статуса задачи - ВАЖНО: этот маршрут нужен для отслеживания прогресса анализа"""
     task = active_tasks.get(task_id)
     if not task:
         return jsonify({
@@ -367,6 +406,30 @@ def api_task_status(task_id):
         'success': True,
         **task
     })
+
+@app.route('/api/statistics/detailed')
+def api_detailed_statistics():
+    """API детальной статистики - для совместимости с фронтендом"""
+    if not agent:
+        return jsonify({
+            'success': False,
+            'error': 'Агент не инициализирован',
+            'recent_analyses': []
+        })
+    
+    try:
+        # Пытаемся получить детальную статистику или возвращаем пустую
+        stats = agent.get_statistics()
+        return jsonify({
+            'success': True,
+            'recent_analyses': []
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'recent_analyses': []
+        })
 
 # ============================================================================
 # КОНТЕКСТНЫЕ ПРОЦЕССОРЫ
@@ -381,53 +444,15 @@ def utility_processor():
     return dict(get_category_color=category_color, now=datetime.now)
 
 # ============================================================================
-# ВЕБ-МАРШРУТЫ
+# ВЕБ-МАРШРУТЫ (ИСПРАВЛЕНЫ - ВСЕ ВОЗВРАЩАЮТ СТАТИСТИКУ)
 # ============================================================================
 
 @app.route('/')
 def index():
     """Главная страница"""
     try:
-        if agent:
-            try:
-                stats = agent.get_statistics()
-                return render_template('index.html', stats=stats)
-            except Exception as e:
-                print(f"⚠️  Ошибка получения статистики: {e}")
-                # Если не удалось получить статистику, передаем демо-данные
-                demo_stats = {
-                    "statistics": {
-                        "total_news": 0,
-                        "analyzed_news": 0,
-                        "total_analyses": 0,
-                        "analysis_coverage": "0%",
-                        "categories": {}
-                    },
-                    "database_size_mb": 0,
-                    "timestamp": datetime.now().isoformat()
-                }
-                return render_template('index.html', stats=demo_stats)
-        else:
-            # Демо-режим
-            demo_stats = {
-                "statistics": {
-                    "total_news": 0,
-                    "analyzed_news": 0, 
-                    "total_analyses": 0,
-                    "analysis_coverage": "0%",
-                    "categories": {
-                        "технологии": 0,
-                        "политика": 0,
-                        "экономика": 0,
-                        "наука": 0,
-                        "спорт": 0
-                    }
-                },
-                "database_size_mb": 0,
-                "timestamp": datetime.now().isoformat()
-            }
-            return render_template('index.html', stats=demo_stats)
-            
+        stats = get_system_stats()
+        return render_template('index.html', stats=stats, active_tab='home')
     except Exception as e:
         # Если шаблон не найден, показываем простую страницу
         return render_template_string('''
@@ -449,37 +474,46 @@ def index():
             </body>
             </html>
         ''' % str(e))
+
 @app.route('/news')
 def news_page():
-    """Страница новостей"""
+    """Страница новостей - рендерим главную с активированной вкладкой новостей"""
     try:
-        return render_template('news.html')
+        stats = get_system_stats()
+        return render_template('index.html', stats=stats, active_tab='news')
     except:
+        # Если ошибка, редиректим на главную
         return redirect('/')
 
 @app.route('/analyze')
 def analyze_page():
-    """Страница анализа"""
+    """Страница анализа - рендерим главную с активированным блоком анализа"""
     try:
-        return render_template('analyze.html')
+        stats = get_system_stats()
+        return render_template('index.html', stats=stats, active_tab='analyze', show_analysis=True)
     except:
+        # Если ошибка, редиректим на главную
         return redirect('/')
 
 @app.route('/statistics')
 def statistics_page():
-    """Страница статистики"""
+    """Страница статистики - рендерим главную с активированной вкладкой статистики"""
     try:
-        return render_template('statistics.html')
+        stats = get_system_stats()
+        return render_template('index.html', stats=stats, active_tab='statistics')
     except:
+        # Если ошибка, редиректим на главную
         return redirect('/')
 
 @app.route('/search')
 def search_page():
-    """Страница поиска"""
+    """Страница поиска - рендерим главную с активированным поиском"""
     try:
         query = request.args.get('q', '')
-        return render_template('search.html', query=query)
+        stats = get_system_stats()
+        return render_template('index.html', stats=stats, active_tab='search', search_query=query)
     except:
+        # Если ошибка, редиректим на главную
         return redirect('/')
 
 # ============================================================================
@@ -573,12 +607,15 @@ if __name__ == '__main__':
         print("   3. Модель скачана: ollama pull llama3.1:8b")
     
     print("\n🌍 Доступные маршруты:")
-    print("   • http://localhost:5000/ - Главная страница")
-    print("   • http://localhost:5000/news - Новости")
-    print("   • http://localhost:5000/analyze - Анализ")
-    print("   • http://localhost:5000/statistics - Статистика")
-    print("   • http://localhost:5000/search - Поиск")
+    print("   • http://localhost:5000/ - Главная страница (все функции)")
+    print("   • http://localhost:5000/news - Новости (с активированной вкладкой)")
+    print("   • http://localhost:5000/analyze - Анализ (с активированным блоком)")
+    print("   • http://localhost:5000/statistics - Статистика (с активированной вкладкой)")
+    print("   • http://localhost:5000/search - Поиск (с заполненным запросом)")
     print("   • http://localhost:5000/api/status - API статуса")
+    print("   • http://localhost:5000/api/analyze - API анализа темы (POST)")
+    print("   • http://localhost:5000/api/task/<id> - Статус задачи")
+    print("\n📊 Статус системы передается на ВСЕХ маршрутах!")
     print("\n🚀 Запуск сервера...")
     print("=" * 60)
     

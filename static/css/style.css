@@ -142,6 +142,20 @@ body {
     }
 }
 
+.progress {
+    height: 20px;
+    margin-bottom: 10px;
+}
+
+.progress-bar-animated {
+    animation: progress-bar-stripes 1s linear infinite;
+}
+
+@keyframes progress-bar-stripes {
+    0% { background-position: 1rem 0; }
+    100% { background-position: 0 0; }
+}
+
 /* Кастомные цвета для категорий */
 .bg-технологии { background-color: #007bff !important; }
 .bg-политика { background-color: #dc3545 !important; }
@@ -214,3 +228,26 @@ body {
 .list-group-item:hover {
     background-color: #f8f9fa;
 }
+
+/* Стили для результатов анализа */
+.analysis-result {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.analysis-section {
+    transition: all 0.3s ease;
+}
+
+.analysis-section:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.section-header {
+    font-weight: 600;
+    border-bottom: 2px solid rgba(255,255,255,0.2);
+}
+
+.section-content {
+    background-color: #f8f9fa;
+    font-size:
