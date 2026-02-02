@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+
+{% block title %}🤖 Главная - Новостной ИИ-агент{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Левая колонка: Статистика и быстрые действия -->
+    <div class="col-lg-4 mb-4">
+        <!-- Статус системы -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-speedometer2"></i> Статус системы
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6 mb-3">
+                        <div class="stat-card">
+                            <h2 class="text-primary">{{ stats.statistics.total_news }}</h2>
+                            <small class="text-muted">Новостей в базе</small>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <div class="stat-card">
+                            <h2 class="text-success">{{ stats.statistics.analyzed_news }}</h2>
+                            <small class="text-muted">Проанализировано</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="stat-card">
+                            <h2 class="text-warning">{{ stats.statistics.total_analyses }}</h2>
+                            <small class="text-muted">Анализов выполнено</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="stat-card">
+                            <h2 class="text-info">{{ stats.database_size_mb|round(2) }}</h2>
+                            <small class="text-muted">Размер базы (MB)</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <i class="bi bi-clock"></i> Обновлено: {{ stats.timestamp[:16].replace('T', ' ') }}
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Быстрые действия -->
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-lightning"></i> Быстрые действия
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" onclick="collectNews()">
+                        <i class="bi bi-cloud-download"></i> Собрать новости
+                    </button>
+                    <a href="{{ url_for('analyze_page') }}" class="btn btn-outline-warning">
+                        <i class="bi bi-graph-up"></i> Проанализировать тему
+                    </a>
+                    <a href="{{ url_for('news_page') }}" class="btn btn-outline-info">
+                        <i class="bi bi-newspaper"></i> Просмотреть новости
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Категории новостей -->
+        {% if stats.statistics.categories %}
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <i class="bi bi-tags"></i> Распределение по категориям
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    {% for category, count in stats.statistics.categories.items() %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>
+                            <span class="badge bg-{{ get_category_color(category) }} me-2">{{ category }}</span>
+                        </span>
+                        <span class="badge bg-secondary rounded-pill">{{ count }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Центральная колонка: Последние новости -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <i class="bi bi-clock-history"></i> Последние новости
+            </div>
+            <div class="card-body">
+                <div id="latestNews">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                        <p class="mt-2">Загрузка последних новостей...</p>
+                    </div>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('news_page') }}" class="btn btn-outline-dark">
+                        <i class="bi bi-arrow-right"></i> Все новости
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Последние анализы -->
+        <div class="card mt-4">
+            <div class="card-header bg-warning text-dark">
+                <i class="bi bi-graph-up-arrow"></i> Последние анализы
+            </div>
+            <div class="card-body">
+                <div id="latestAnalyses">
+                    <div class="text-center">
+                        <div class="spinner-border text-warning" role="status">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                        <p class="mt-2">Загрузка последних анализов...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно сбора новостей -->
+<div class="modal fade" id="collectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-cloud-download"></i> Сбор новостей</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="collectLimit" class="form-label">
+                        Количество статей с каждого источника:
+                    </label>
+                    <input type="range" class="form-range" id="collectLimit" min="1" max="10" value="3">
+                    <div class="d-flex justify-content-between">
+                        <small>1</small>
+                        <small id="collectLimitValue">3</small>
+                        <small>10</small>
+                    </div>
+                </div>
+                <div class="progress mb-3 d-none" id="collectProgress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         style="width: 0%"></div>
+                </div>
+                <div id="collectResult"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="startCollection()">
+                    <i class="bi bi-play-fill"></i> Начать сбор
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Обновляем значение слайдера
+document.getElementById('collectLimit').addEventListener('input', function() {
+    document.getElementById('collectLimitValue').textContent = this.value;
+});
+
+// Функция для отображения уведомления
+function showNotification(message, type = 'info') {
+    const types = {
+        'success': 'alert-success',
+        'error': 'alert-danger', 
+        'warning': 'alert-warning',
+        'info': 'alert-info'
+    };
+    
+    const alertClass = types[type] || 'alert-info';
+    
+    const alert = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    $('#notificationArea').append(alert);
+    
+    // Автоматическое скрытие через 5 секунд
+    setTimeout(() => {
+        $('.alert').alert('close');
+    }, 5000);
+}
+
+// Функция сбора новостей
+function collectNews() {
+    $('#collectModal').modal('show');
+}
+
+// Начало сбора новостей
+function startCollection() {
+    const limit = document.getElementById('collectLimit').value;
+    
+    $('#collectProgress').removeClass('d-none');
+    $('#collectResult').html('');
+    
+    $.ajax({
+        url: '/api/collect',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ limit: parseInt(limit) }),
+        success: function(response) {
+            if (response.success) {
+                $('#collectResult').html(`
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> ${response.message}
+                        <br><small>ID задачи: ${response.task_id}</small>
+                    </div>
+                `);
+                
+                // Начинаем отслеживать прогресс
+                trackCollectionProgress(response.task_id);
+            }
+        },
+        error: function(xhr) {
+            $('#collectResult').html(`
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Ошибка: ${xhr.responseJSON?.error || 'Неизвестная ошибка'}
+                </div>
+            `);
+        }
+    });
+}
+
+// Отслеживание прогресса сбора
+function trackCollectionProgress(taskId) {
+    const interval = setInterval(() => {
+        $.get(`/api/task/${taskId}`, function(task) {
+            if (task.status === 'completed') {
+                clearInterval(interval);
+                $('#collectProgress .progress-bar').css('width', '100%');
+                $('#collectResult').html(`
+                    <div class="alert alert-success">
+                        <i class="bi bi-check-circle"></i> Сбор новостей успешно завершен!
+                    </div>
+                `);
+                showNotification('Новости успешно собраны!', 'success');
+                loadLatestNews(); // Обновляем список новостей
+                setTimeout(() => $('#collectModal').modal('hide'), 2000);
+            } else if (task.status === 'error') {
+                clearInterval(interval);
+                $('#collectResult').html(`
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> Ошибка: ${task.error}
+                    </div>
+                `);
+            } else if (task.status === 'running') {
+                const progress = task.progress || 0;
+                $('#collectProgress .progress-bar').css('width', `${progress}%`);
+            }
+        });
+    }, 1000);
+}
+
+// Загрузка последних новостей
+function loadLatestNews() {
+    $.get('/api/search?limit=5', function(data) {
+        if (data.success && data.results.length > 0) {
+            let html = '';
+            data.results.forEach(news => {
+                html += `
+                    <div class="news-item mb-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <h6 class="mb-1">
+                                <a href="${news.url}" target="_blank" class="text-decoration-none">${news.title}</a>
+                            </h6>
+                            <span class="badge ${news.category_color}">${news.category}</span>
+                        </div>
+                        <p class="mb-1 text-muted small">
+                            <i class="bi bi-newspaper"></i> ${news.source} • 
+                            <i class="bi bi-clock"></i> ${news.published}
+                        </p>
+                        ${news.summary ? `<p class="small">${news.summary}</p>` : ''}
+                        <hr>
+                    </div>
+                `;
+            });
+            $('#latestNews').html(html);
+        } else {
+            $('#latestNews').html(`
+                <div class="text-center py-4">
+                    <i class="bi bi-inbox display-4 text-muted"></i>
+                    <p class="mt-2">Новостей пока нет</p>
+                    <button class="btn btn-sm btn-outline-primary" onclick="collectNews()">
+                        <i class="bi bi-cloud-download"></i> Собрать новости
+                    </button>
+                </div>
+            `);
+        }
+    });
+}
+
+// Загрузка последних анализов
+function loadLatestAnalyses() {
+    $.get('/api/statistics/detailed', function(data) {
+        if (data.success && data.recent_analyses.length > 0) {
+            let html = '<div class="list-group">';
+            data.recent_analyses.slice(0, 3).forEach(analysis => {
+                html += `
+                    <a href="/analysis/${analysis.id}" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">${analysis.query}</h6>
+                            <small>${analysis.created_at ? analysis.created_at.slice(0, 10) : ''}</small>
+                        </div>
+                        <small class="text-muted">Нажмите для просмотра полного анализа</small>
+                    </a>
+                `;
+            });
+            html += '</div>';
+            $('#latestAnalyses').html(html);
+        } else {
+            $('#latestAnalyses').html(`
+                <div class="text-center py-3">
+                    <i class="bi bi-graph-up display-4 text-muted"></i>
+                    <p class="mt-2">Анализов пока нет</p>
+                    <a href="/analyze" class="btn btn-sm btn-outline-warning">
+                        <i class="bi bi-graph-up"></i> Создать анализ
+                    </a>
+                </div>
+            `);
+        }
+    });
+}
+
+// Загрузка данных при открытии страницы
+$(document).ready(function() {
+    loadLatestNews();
+    loadLatestAnalyses();
+    
+    // Обновление статуса системы каждые 30 секунд
+    setInterval(function() {
+        $.get('/api/status', function(status) {
+            if (status.error) {
+                $('#statusIndicator').html(`
+                    <i class="bi bi-circle-fill text-danger"></i>
+                    <span class="ms-1">Ошибка: ${status.error}</span>
+                `);
+            } else {
+                $('#statusIndicator').html(`
+                    <i class="bi bi-circle-fill text-success"></i>
+                    <span class="ms-1">Система активна (${status.statistics.total_news} новостей)</span>
+                `);
+            }
+        });
+    }, 30000);
+});
+</script>
+{% endblock %}
